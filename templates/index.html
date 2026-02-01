@@ -1,0 +1,575 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>A股动量策略 | 智能选股</title>
+    <style>
+        :root {
+            --bg-color: #0f172a;
+            --card-bg: rgba(30, 41, 59, 0.7);
+            --primary: #3b82f6;
+            --accent: #8b5cf6;
+            --text-main: #f1f5f9;
+            --text-muted: #94a3b8;
+            --success: #10b981;
+            --danger: #ef4444;
+            --gold: #fbbf24;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
+        }
+
+        body {
+            background-color: var(--bg-color);
+            background-image:
+                radial-gradient(at 0% 0%, rgba(59, 130, 246, 0.15) 0px, transparent 50%),
+                radial-gradient(at 100% 0%, rgba(139, 92, 246, 0.15) 0px, transparent 50%);
+            color: var(--text-main);
+            min-height: 100vh;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            padding: 2rem;
+        }
+
+        .container {
+            max-width: 1000px;
+            width: 100%;
+        }
+
+        header {
+            text-align: center;
+            margin-bottom: 3rem;
+            animation: fadeInDown 0.8s ease-out;
+        }
+
+        h1 {
+            font-size: 2.5rem;
+            font-weight: 800;
+            background: linear-gradient(135deg, #60a5fa, #c084fc);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.5rem;
+        }
+
+        .subtitle {
+            color: var(--text-muted);
+            font-size: 1rem;
+        }
+
+        .controls {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            display: flex;
+            gap: 1rem;
+            align-items: center;
+            justify-content: center;
+            margin-bottom: 2rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1), 0 2px 4px -1px rgba(0, 0, 0, 0.06);
+            animation: fadeIn 1s ease-out;
+        }
+
+        .input-group {
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+        }
+
+        label {
+            color: var(--text-muted);
+            font-weight: 500;
+        }
+
+        input[type="number"] {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            width: 80px;
+            text-align: center;
+            font-size: 1rem;
+            transition: border-color 0.2s;
+        }
+
+        input[type="text"] {
+            background: rgba(15, 23, 42, 0.5);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            color: var(--text-main);
+            padding: 0.5rem 1rem;
+            border-radius: 0.5rem;
+            font-size: 0.9rem;
+            transition: border-color 0.2s;
+        }
+
+        input:focus {
+            outline: none;
+            border-color: var(--primary);
+        }
+
+        button {
+            background: linear-gradient(135deg, var(--primary), var(--accent));
+            color: white;
+            border: none;
+            padding: 0.6rem 1.5rem;
+            border-radius: 0.5rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s, box-shadow 0.2s;
+        }
+
+        .btn-sm {
+            padding: 0.4rem 0.8rem;
+            font-size: 0.85rem;
+        }
+
+        .btn-danger {
+            background: linear-gradient(135deg, #ef4444, #b91c1c);
+        }
+
+        .btn-secondary {
+            background: rgba(255, 255, 255, 0.1);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        .btn-secondary:hover {
+            background: rgba(255, 255, 255, 0.2);
+        }
+
+        button:hover {
+            transform: translateY(-1px);
+            box-shadow: 0 4px 12px rgba(59, 130, 246, 0.3);
+        }
+
+        button:active {
+            transform: translateY(0);
+        }
+
+        button:disabled {
+            opacity: 0.7;
+            cursor: not-allowed;
+        }
+
+        .etf-manager {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 1.5rem;
+            border-radius: 1rem;
+            margin-bottom: 2rem;
+            display: none;
+            /* Hidden by default */
+            animation: fadeIn 0.5s ease-out;
+        }
+
+        .etf-manager.open {
+            display: block;
+        }
+
+        .etf-list {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 0.8rem;
+            margin-top: 1rem;
+        }
+
+        .etf-tag {
+            background: rgba(15, 23, 42, 0.8);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            padding: 0.5rem 1rem;
+            border-radius: 2rem;
+            display: flex;
+            align-items: center;
+            gap: 0.5rem;
+            font-size: 0.9rem;
+        }
+
+        .etf-tag .code {
+            color: var(--text-muted);
+            font-size: 0.8em;
+        }
+
+        .etf-tag .remove {
+            color: var(--danger);
+            cursor: pointer;
+            font-weight: bold;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            width: 16px;
+            height: 16px;
+            border-radius: 50%;
+            background: rgba(239, 68, 68, 0.1);
+        }
+
+        .etf-tag .remove:hover {
+            background: rgba(239, 68, 68, 0.3);
+        }
+
+        .add-etf-form {
+            display: flex;
+            gap: 0.5rem;
+            margin-bottom: 1rem;
+            align-items: flex-end;
+        }
+
+        .results {
+            display: grid;
+            grid-template-columns: 2fr 1fr;
+            gap: 1.5rem;
+            opacity: 0;
+            /* Hidden by default */
+            transition: opacity 0.5s;
+        }
+
+        .results.visible {
+            opacity: 1;
+        }
+
+        .card {
+            background: var(--card-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid rgba(255, 255, 255, 0.1);
+            border-radius: 1rem;
+            padding: 1.5rem;
+            box-shadow: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
+        }
+
+        .recommendation {
+            background: linear-gradient(145deg, rgba(59, 130, 246, 0.1), rgba(139, 92, 246, 0.1));
+            border: 1px solid rgba(139, 92, 246, 0.2);
+            text-align: center;
+            display: flex;
+            flex-direction: column;
+            justify-content: center;
+            align-items: center;
+        }
+
+        .rec-label {
+            color: var(--text-muted);
+            font-size: 0.9rem;
+            text-transform: uppercase;
+            letter-spacing: 0.05em;
+            margin-bottom: 0.5rem;
+        }
+
+        .rec-name {
+            font-size: 2rem;
+            font-weight: 800;
+            color: var(--gold);
+            margin-bottom: 0.25rem;
+            text-shadow: 0 0 20px rgba(251, 191, 36, 0.3);
+        }
+
+        .rec-score {
+            font-size: 1.25rem;
+            color: var(--text-main);
+        }
+
+        table {
+            width: 100%;
+            border-collapse: collapse;
+        }
+
+        th {
+            text-align: left;
+            color: var(--text-muted);
+            font-weight: 500;
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+        }
+
+        td {
+            padding: 1rem;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        tr:last-child td {
+            border-bottom: none;
+        }
+
+        .trend-up {
+            color: var(--success);
+        }
+
+        .trend-down {
+            color: var(--danger);
+        }
+
+        .rank-1 {
+            color: var(--gold);
+            font-weight: bold;
+        }
+
+        .loader {
+            display: none;
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255, 255, 255, 0.3);
+            border-radius: 50%;
+            border-top-color: white;
+            animation: spin 1s ease-in-out infinite;
+        }
+
+        @keyframes spin {
+            to {
+                transform: rotate(360deg);
+            }
+        }
+
+        @keyframes fadeInDown {
+            from {
+                opacity: 0;
+                transform: translateY(-20px);
+            }
+
+            to {
+                opacity: 1;
+                transform: translateY(0);
+            }
+        }
+
+        @keyframes fadeIn {
+            from {
+                opacity: 0;
+            }
+
+            to {
+                opacity: 1;
+            }
+        }
+    </style>
+</head>
+
+<body>
+
+    <div class="container">
+        <header>
+            <h1>A股动量策略</h1>
+            <div class="subtitle">基于 R² 回归平滑度的动量选股系统</div>
+        </header>
+
+        <div class="controls">
+            <div class="input-group">
+                <label for="n-days">计算周期 (天)</label>
+                <input type="number" id="n-days" value="15" min="5" max="60">
+            </div>
+            <button onclick="calculate()" id="calc-btn">
+                <span class="btn-text">开始计算</span>
+                <div class="loader" id="loader"></div>
+            </button>
+            <button onclick="toggleManager()" class="btn-secondary" style="margin-left: auto;">
+                管理标的
+            </button>
+        </div>
+
+        <div class="etf-manager" id="etf-manager">
+            <h3 style="margin-bottom: 1rem; color: var(--gold);">管理自选标的</h3>
+
+            <div class="add-etf-form">
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem">名称</div>
+                    <input type="text" id="new-etf-name" placeholder="如: 芯片ETF" style="width: 120px;">
+                </div>
+                <div>
+                    <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.2rem">代码</div>
+                    <input type="text" id="new-etf-code" placeholder="如: 159995" style="width: 100px;">
+                </div>
+                <button onclick="addETF()" class="btn-sm">添加</button>
+            </div>
+
+            <div style="font-size: 0.8rem; color: var(--text-muted); margin-bottom: 0.5rem">当前列表 (点击 x 移除)</div>
+            <div class="etf-list" id="etf-list-container">
+                <!-- ETF Tags injected here -->
+            </div>
+        </div>
+
+        <div class="results" id="results-area">
+            <div class="card">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>排名</th>
+                            <th>ETF 名称</th>
+                            <th>涨幅 (N天)</th>
+                            <th>R² 系数</th>
+                            <th>动量得分</th>
+                        </tr>
+                    </thead>
+                    <tbody id="table-body">
+                        <!-- Data will be injected here -->
+                    </tbody>
+                </table>
+            </div>
+            <div class="card recommendation">
+                <div class="rec-label">当前最强持仓</div>
+                <div class="rec-name" id="rec-name">--</div>
+                <div class="rec-score" id="rec-score">得分: --</div>
+                <div style="margin-top: 1rem; font-size: 0.9rem; color: var(--text-muted);" id="rec-date">数据日期: --</div>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        // Init default ETFs
+        // Default order: 黄金, 创业板, 沪深300, 纳指
+        let etfList = [
+            { name: "黄金ETF", code: "518880" },
+            { name: "创业板ETF", code: "159915" },
+            { name: "沪深300ETF", code: "510300" },
+            { name: "纳指ETF", code: "513100" }
+        ];
+
+        // Load from local storage if valid
+        const saved = localStorage.getItem('etf_list');
+        if (saved) {
+            try {
+                etfList = JSON.parse(saved);
+            } catch (e) { }
+        }
+
+        function toggleManager() {
+            const el = document.getElementById('etf-manager');
+            el.classList.toggle('open');
+            renderETFList();
+        }
+
+        function renderETFList() {
+            const container = document.getElementById('etf-list-container');
+            container.innerHTML = '';
+
+            etfList.forEach((etf, index) => {
+                const tag = document.createElement('div');
+                tag.className = 'etf-tag';
+                tag.innerHTML = `
+                    <span>${etf.name}</span>
+                    <span class="code">${etf.code}</span>
+                    <span class="remove" onclick="removeETF(${index})">×</span>
+                `;
+                container.appendChild(tag);
+            });
+
+            // Save to local storage
+            localStorage.setItem('etf_list', JSON.stringify(etfList));
+        }
+
+        function addETF() {
+            const nameInput = document.getElementById('new-etf-name');
+            const codeInput = document.getElementById('new-etf-code');
+
+            const name = nameInput.value.trim();
+            const code = codeInput.value.trim();
+
+            if (!name || !code) {
+                alert("请输入名称和代码");
+                return;
+            }
+
+            etfList.push({ name, code });
+            nameInput.value = '';
+            codeInput.value = '';
+            renderETFList();
+        }
+
+        function removeETF(index) {
+            etfList.splice(index, 1);
+            renderETFList();
+        }
+
+        async function calculate() {
+            const nDays = document.getElementById('n-days').value;
+            const btn = document.getElementById('calc-btn');
+            const btnText = document.querySelector('.btn-text');
+            const loader = document.getElementById('loader');
+            const resultsArea = document.getElementById('results-area');
+
+            // UI Loading state
+            btn.disabled = true;
+            btnText.style.display = 'none';
+            loader.style.display = 'block';
+            resultsArea.classList.remove('visible');
+
+            try {
+                const response = await fetch('/api/calculate', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json'
+                    },
+                    body: JSON.stringify({
+                        n_days: nDays,
+                        etf_list: etfList
+                    })
+                });
+
+                const data = await response.json();
+
+                if (data.status === 'success') {
+                    renderResults(data.results, data.best_pick);
+                } else {
+                    alert('Error: ' + data.message);
+                }
+            } catch (error) {
+                alert('Request failed: ' + error);
+            } finally {
+                // Restore UI
+                btn.disabled = false;
+                btnText.style.display = 'block';
+                loader.style.display = 'none';
+                resultsArea.classList.add('visible');
+            }
+        }
+
+        function renderResults(results, bestPick) {
+            const tbody = document.getElementById('table-body');
+            tbody.innerHTML = '';
+
+            results.forEach((item, index) => {
+                const tr = document.createElement('tr');
+                const isPositive = item.return_pct >= 0;
+
+                if (item.error) {
+                    tr.innerHTML = `
+                        <td>-</td>
+                        <td>${item.name} <span style="font-size:0.8em; opacity:0.6">(${item.code})</span></td>
+                        <td colspan="3" style="color: var(--danger); text-align: center;">
+                            ${item.date === 'Fetch Failed' ? '数据获取失败' : '数据不足 (请检查代码或日期)'}
+                        </td>
+                    `;
+                } else {
+                    tr.innerHTML = `
+                        <td class="${index === 0 ? 'rank-1' : ''}">#${index + 1}</td>
+                        <td class="${index === 0 ? 'rank-1' : ''}">${item.name} <span style="font-size:0.8em; opacity:0.6">(${item.code})</span></td>
+                        <td class="${isPositive ? 'trend-up' : 'trend-down'}">${item.return_pct > 0 ? '+' : ''}${item.return_pct}%</td>
+                        <td>${item.r_squared}</td>
+                        <td class="${index === 0 ? 'rank-1' : ''}">${item.score}</td>
+                    `;
+                }
+                tbody.appendChild(tr);
+            });
+
+            if (bestPick && !bestPick.error) {
+                document.getElementById('rec-name').textContent = bestPick.name;
+                document.getElementById('rec-score').textContent = `得分: ${bestPick.score}`;
+                document.getElementById('rec-date').textContent = `数据日期: ${bestPick.date}`;
+            } else {
+                document.getElementById('rec-name').textContent = "--";
+                document.getElementById('rec-score').textContent = "得分: --";
+                document.getElementById('rec-date').textContent = "无效数据";
+            }
+        }
+
+        // Auto-load
+        renderETFList();
+    </script>
+</body>
+
+</html>
