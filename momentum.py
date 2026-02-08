@@ -1,8 +1,6 @@
 import requests
-import pandas as pd
-import numpy as np
-from scipy import stats
-from datetime import datetime, timedelta
+from datetime import datetime
+import math
 
 class MomentumCalculator:
     def __init__(self):
@@ -19,12 +17,16 @@ class MomentumCalculator:
     def get_data(self, etf_list, days=30):
         """
         获取过去 N 天的日线数据。
+        返回结果为 list of dicts: [{"日期": str, "收盘": float}, ...]
         """
         results = {}
         # Increase lookback window to ensure enough trading days
-        start_date = (datetime.now() - timedelta(days=days*3 + 20)).strftime("%Y%m%d")
-        end_date = datetime.now().strftime("%Y%m%d")
-
+        # Simple date diff approximation
+        
+        # Use simple string formatting for dates
+        # Note: We don't strictly need start/end date for EastMoney API 'lmt' param,
+        # but we keep logic similar.
+        
         for item in etf_list:
             name = item['name']
             code = item['code']
@@ -35,13 +37,9 @@ class MomentumCalculator:
                  continue
 
             try:
-                # Direct fetch from EastMoney API to bypass akshare issues/proxies
+                # Direct fetch from EastMoney API
                 print(f"Fetching data for {name} ({code})...")
                 
-                # Determine market (1 for SH, 0 for SZ)
-                # 5xxxx -> SH (1)
-                # 6xxxx -> SH (1)
-                # Others -> SZ (0)
                 secid_prefix = "1" if code.startswith("5") or code.startswith("6") else "0"
                 secid = f"{secid_prefix}.{code}"
                 
@@ -70,21 +68,60 @@ class MomentumCalculator:
                 parsed_data = []
                 for line in klines:
                     parts = line.split(",")
+                    # parts[0] is date "YYYY-MM-DD"
+                    # parts[2] is close price
                     parsed_data.append({
-                        "日期": pd.to_datetime(parts[0]),
+                        "日期": parts[0], 
                         "收盘": float(parts[2])
                     })
                 
-                df = pd.DataFrame(parsed_data)
-                
-                self.cache[code] = df
+                self.cache[code] = parsed_data
                 self.cache_time[code] = datetime.now()
-                results[name] = (df, code) # Return tuple (df, code) to keep track
+                results[name] = (parsed_data, code)
             except Exception as e:
                 print(f"Error fetching {name}: {e}")
                 results[name] = (None, code)
         
         return results
+
+    def simple_linregress(self, y_values):
+        """
+        计算简单的线性回归 y = mx + c
+        返回: (slope, r_squared)
+        x 默认为 0, 1, 2, ... len(y)-1
+        """
+        n = len(y_values)
+        if n < 2:
+            return 0, 0
+        
+        x_values = list(range(n))
+        
+        sum_x = sum(x_values)
+        sum_y = sum(y_values)
+        sum_xx = sum(x * x for x in x_values)
+        sum_xy = sum(x * y for x, y in zip(x_values, y_values))
+        sum_yy = sum(y * y for y in y_values)
+        
+        # Calculate slope (m) and intercept (c)
+        denominator = n * sum_xx - sum_x * sum_x
+        if denominator == 0:
+            return 0, 0
+            
+        slope = (n * sum_xy - sum_x * sum_y) / denominator
+        # intercept = (sum_y - slope * sum_x) / n # Not needed for R2
+        
+        # Calculate R^2
+        # r = (n*sum_xy - sum_x*sum_y) / sqrt((n*sum_xx - sum_x^2)(n*sum_yy - sum_y^2))
+        numerator_r = (n * sum_xy - sum_x * sum_y)
+        denominator_r_sq = (n * sum_xx - sum_x ** 2) * (n * sum_yy - sum_y ** 2)
+        
+        if denominator_r_sq <= 0:
+            return slope, 0
+            
+        r_value = numerator_r / math.sqrt(denominator_r_sq)
+        r_squared = r_value ** 2
+        
+        return slope, r_squared
 
     def calculate_momentum(self, n_days=15, etf_list=None):
         """
@@ -96,18 +133,17 @@ class MomentumCalculator:
         data_map = self.get_data(etf_list, days=n_days)
         rankings = []
         
-        # Track which codes we have processed to ensure we return all input ETFs
         processed_codes = set()
 
         for name, data_tuple in data_map.items():
             if data_tuple is None:
                 continue
             
-            df, code = data_tuple
+            data_list, code = data_tuple
             processed_codes.add(code)
             
-            if df is None or len(df) < n_days:
-                print(f"Insufficient data for {name}: {len(df) if df is not None else 'None'}")
+            if data_list is None or len(data_list) < n_days:
+                print(f"Insufficient data for {name}: {len(data_list) if data_list else 'None'}")
                 rankings.append({
                     "name": name,
                     "code": code,
@@ -115,14 +151,14 @@ class MomentumCalculator:
                     "return_pct": 0,
                     "r_squared": 0,
                     "score": -9999,
-                    "date": "Data Insufficient",
+                    "date": "数据不足",
                     "error": True
                 })
                 continue
             
             # 取最近 n_days 的数据
-            recent_df = df.iloc[-n_days:].copy()
-            if len(recent_df) < 5: # 数据太少无法计算 R2
+            recent_data = data_list[-n_days:]
+            if len(recent_data) < 5: 
                 rankings.append({
                     "name": name,
                     "code": code,
@@ -130,30 +166,25 @@ class MomentumCalculator:
                     "return_pct": 0,
                     "r_squared": 0,
                     "score": -9999,
-                    "date": "Data Insufficient",
+                    "date": "数据不足",
                      "error": True
                 })
                 continue
 
             # 1. 计算涨幅 (Return)
-            start_price = recent_df.iloc[0]['收盘']
-            end_price = recent_df.iloc[-1]['收盘']
-            pct_change = (end_price - start_price) / start_price
+            start_price = recent_data[0]['收盘']
+            end_price = recent_data[-1]['收盘']
+            
+            if start_price == 0:
+                pct_change = 0
+            else:
+                pct_change = (end_price - start_price) / start_price
 
             # 2. 计算 R^2 (R-squared)
-            # 使用线性回归: Price vs Time (0, 1, 2, ... n-1)
-            y = recent_df['收盘'].values
-            x = np.arange(len(y))
-            
-            slope, intercept, r_value, p_value, std_err = stats.linregress(x, y)
-            r_squared = r_value ** 2
+            y_values = [d['收盘'] for d in recent_data]
+            slope, r_squared = self.simple_linregress(y_values)
 
             # 3. 动量得分
-            # 用户公式: n(涨幅) * R^2
-            # 只有当涨幅为正时，R^2 才有意义来强化“平稳上涨”的概念
-            # 如果涨幅为负，R^2 高说明是“平稳下跌”，此时动量应该是负的
-            
-            # 简单处理：保留涨幅的符号
             momentum_score = pct_change * r_squared
 
             rankings.append({
@@ -162,12 +193,12 @@ class MomentumCalculator:
                 "price": round(end_price, 3),
                 "return_pct": round(pct_change * 100, 2),
                 "r_squared": round(r_squared, 4),
-                "score": round(momentum_score * 100, 4), # 放大100倍方便看
-                "date": recent_df.iloc[-1]['日期'].strftime("%Y-%m-%d"),
+                "score": round(momentum_score * 100, 4), 
+                "date": recent_data[-1]['日期'],
                 "error": False
             })
             
-        # Ensure any ETFs that failed completely (returned None in get_data) are also added
+        # Ensure any ETFs that failed completely are also added
         for item in etf_list:
             if item['code'] not in processed_codes:
                  rankings.append({
@@ -177,7 +208,7 @@ class MomentumCalculator:
                     "return_pct": 0,
                     "r_squared": 0,
                     "score": -9999,
-                    "date": "Fetch Failed",
+                    "date": "获取失败",
                     "error": True
                 })
 
